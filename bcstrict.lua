@@ -90,7 +90,7 @@ local function parse_debug(s, x)
 	return lineinfo, locvars, upvalues, x
 end
 
-local function check_function(accum, s, x, ins_fmt, parent_source)
+local function check_function(accum, env, s, x, ins_fmt, parent_source)
 	local source, linedefined, lastlinedefined
 	source, x = parse_string(s, x)
 	source = source or parent_source
@@ -107,7 +107,7 @@ local function check_function(accum, s, x, ins_fmt, parent_source)
 	local nprotos
 	nprotos, x = unpack("i", s, x)
 	for j=1,nprotos do
-		x = check_function(accum, s, x, ins_fmt, source)
+		x = check_function(accum, env, s, x, ins_fmt, source)
 	end
 
 	local debug_lineinfo, debug_locvars, debug_upvalues
@@ -115,36 +115,49 @@ local function check_function(accum, s, x, ins_fmt, parent_source)
 
 	if accum then
 		local func = source:sub(2)..":"..linedefined.."-"..lastlinedefined
-		for j=#candidates,1,-1 do
+		for j=1,#candidates do
 			if candidates[j][2] == env_index then
 				local key = constants[candidates[j][3]-255]
-				if candidates[j][1] or (key and not _ENV[key]) then
-					local action = candidates[j][1] and "write " or "read "
+				if candidates[j][1] or (key and not env[key]) then
+					local action = candidates[j][1] and "write: " or "read: "
 					local line = debug_lineinfo[candidates[j][4]]
 					local prefix = line and func..":"..line
 					accum[#accum+1] = prefix..": global "..action..key
 				end
 			end
 		end
-		z=8
 	end
 
 	return x
 end
 
-local function check_dump(s)
+local function check_dump(s, env)
 	local sig, ver, lit, isz, int, num, x = unpack("c4<I2=c6xxBxxjnx", s)
 	assert(sig == "\x1bLua", "not a dump")
 	assert(ver == 0x53, "not a standard 5.3 dump")
 	assert(lit == "\x19\x93\r\n\x1a\n", "mangled dump (conversions?)")
 	assert(int == 0x5678, "mangled dump (wrong-endian?)")
 	assert(num == 370.5, "mangled dump (floats broken?)")
-	local accum = {}
-	assert(check_function(accum, s, x, "i"..isz, "") == #s+1)
 
-	for j=#accum,1,-1 do
-		print(accum[j])
+	local accum = {}
+	assert(check_function(accum, env or _ENV, s, x, "i"..isz, "") == #s+1)
+	return accum
+end
+
+local function strict_mode(env, lenient)
+	local accum = check_dump(string.dump(debug.getinfo(2, "f").func), env)
+	if #accum <= 0 then
+		return
+	end
+
+	if lenient then
+		accum[#accum+1] = ""
+		io.stderr:write(table.concat(accum, "\n"))
+	else
+		accum[0] = "unexpected globals"
+		error(table.concat(accum, "\n\t", 0))
 	end
 end
 
-check_dump(string.dump(debug.getinfo(1, "f").func))
+strict_mode()
+return strict_mode
