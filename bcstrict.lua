@@ -50,7 +50,6 @@ local function parse_code(s, x, i)
 
 	for j=1,v do
 		v, x = unpack(i, s, x)
-		--print(string.format("%2d %3d %3d %3d", v & 63, v>>6 & 255, v>>14 & 511, v>>23 & 511))
 		local o, b = v & 63, v>>23 & 511
 		if o == 6 then -- GETTABUP
 			d[#d+1] = {b, v>>14 & 511}
@@ -106,9 +105,10 @@ local function check_function(a, s, x, ins_fmt, parent_source)
 	local dli, dlv, duv
 	dli, dlv, duv, x = parse_debug(s, x)
 
-	if uvs[0] then
+	local env_upvalue = uvs[linedefined == 0 and 256 or 0]
+	if env_upvalue then
 		for j=1,#acs do
-			if acs[j][1] == uvs[0] then
+			if acs[j][1] == env_upvalue then
 				a[#a+1] = source:match("@?(.*)")..":"..linedefined.."-"..lastlinedefined..": ".. kst[acs[j][2]-255]
 			end
 		end
