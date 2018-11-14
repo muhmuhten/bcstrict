@@ -10,14 +10,18 @@ local function parse_string(s, y)
 	return unpack("c"..(len-1), s, x)
 end
 
-local function parse_uvs(s, x)
-	local u, v = {}
+local function parse_upvalues(s, x, is_main)
+	local v, w, z
 	v, x = unpack("i", s, x)
+	z = x + 2*v
 	for j=1,v do
-		v, x = unpack(">I2", s, x)
-		u[v] = j-1
+		v, w, x = unpack("BB", s, x)
+		-- (main && v) || (!main && !v) -> main == v
+		if w == 0 and is_main == (v ~= 0) then
+			return j-1, z
+		end
 	end
-	return u, x
+	return nil, z
 end
 
 local function parse_constants(s, x)
@@ -50,11 +54,12 @@ local function parse_code(s, x, i)
 
 	for j=1,v do
 		v, x = unpack(i, s, x)
+		--print(string.format("%2d %3d %3d %3d", v & 63, v>>6 & 255, v>>23 & 511, v>>14 & 511))
 		local o, b = v & 63, v>>23 & 511
 		if o == 6 then -- GETTABUP
-			d[#d+1] = {b, v>>14 & 511}
+			d[#d+1] = {false, b, v>>14 & 511, j}
 		elseif o == 8 then -- SETTABUP
-			d[#d+1] = {v>>6 & 255, b}
+			d[#d+1] = {true, v>>6 & 255, b, j}
 		end
 	end
 
@@ -85,33 +90,43 @@ local function parse_debug(s, x)
 	return lineinfo, locvars, upvalues, x
 end
 
-local function check_function(a, s, x, ins_fmt, parent_source)
+local function check_function(accum, s, x, ins_fmt, parent_source)
 	local source, linedefined, lastlinedefined
 	source, x = parse_string(s, x)
 	source = source or parent_source
 	linedefined, lastlinedefined, x = unpack("iixxx", s, x)
 
-	local acs, kst, uvs
-	acs, x = parse_code(s, x, ins_fmt)
-	kst, x = parse_constants(s, x)
-	uvs, x = parse_uvs(s, x)
+	local candidates, constants, env_index
+	candidates, x = parse_code(s, x, ins_fmt)
+	constants, x = parse_constants(s, x)
+	env_index, x = parse_upvalues(s, x, linedefined == 0)
+	if not env_index then
+		accum = nil
+	end
 
 	local nprotos
 	nprotos, x = unpack("i", s, x)
 	for j=1,nprotos do
-		x = check_function(a, s, x, ins_fmt, source)
+		x = check_function(accum, s, x, ins_fmt, source)
 	end
 
-	local dli, dlv, duv
-	dli, dlv, duv, x = parse_debug(s, x)
+	local debug_lineinfo, debug_locvars, debug_upvalues
+	debug_lineinfo, debug_locvars, debug_upvalues, x = parse_debug(s, x)
 
-	local env_upvalue = uvs[linedefined == 0 and 256 or 0]
-	if env_upvalue then
-		for j=1,#acs do
-			if acs[j][1] == env_upvalue then
-				a[#a+1] = source:match("@?(.*)")..":"..linedefined.."-"..lastlinedefined..": ".. kst[acs[j][2]-255]
+	if accum then
+		local func = source:sub(2)..":"..linedefined.."-"..lastlinedefined
+		for j=#candidates,1,-1 do
+			if candidates[j][2] == env_index then
+				local key = constants[candidates[j][3]-255]
+				if candidates[j][1] or (key and not _ENV[key]) then
+					local action = candidates[j][1] and "write " or "read "
+					local line = debug_lineinfo[candidates[j][4]]
+					local prefix = line and func..":"..line
+					accum[#accum+1] = prefix..": global "..action..key
+				end
 			end
 		end
+		z=8
 	end
 
 	return x
@@ -126,7 +141,8 @@ local function check_dump(s)
 	assert(num == 370.5, "mangled dump (floats broken?)")
 	local accum = {}
 	assert(check_function(accum, s, x, "i"..isz, "") == #s+1)
-	for j=1,#accum do
+
+	for j=#accum,1,-1 do
 		print(accum[j])
 	end
 end
