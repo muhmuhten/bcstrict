@@ -205,17 +205,21 @@ local function check_dump (s, cb)
 	return parse_function(cb, s, x, ins_fmt)
 end
 
-local function strict_mode (env)
+local function strict_mode (env, fun)
+	if not fun then
+		fun = string.dump(debug.getinfo(2, "f").func)
+	elseif type(fun) == "function" then
+		fun = string.dump(fun)
+	end
 	env = env or _ENV
 	local accum = {}
-	check_dump(string.dump(debug.getinfo(2, "f").func),
-		function (key, is_write, source, line)
-			if not env[key] then
-				source = source:sub(2)
-				local action = is_write and "write: " or "read: "
-				accum[#accum+1] = source..":"..line..": global "..action..key
-			end
-		end)
+	check_dump(fun, function (key, is_write, source, line)
+		if not env[key] then
+			source = source:sub(2)
+			local action = is_write and "write: " or "read: "
+			accum[#accum+1] = source..":"..line..": global "..action..key
+		end
+	end)
 	if #accum > 0 then
 		accum[0] = "unexpected globals"
 		error(table.concat(accum, "\n\t", 0), 2)
