@@ -10,18 +10,21 @@ local function parse_string(s, y)
 	return unpack("c"..(len-1), s, x)
 end
 
-local function parse_upvalues(s, x, is_main)
-	local v, w, z
+local function parse_code(s, x, i)
+	local d, v = {}
 	v, x = unpack("i", s, x)
-	z = x + 2*v
+
 	for j=1,v do
-		v, w, x = unpack("BB", s, x)
-		-- (main && v) || (!main && !v) -> main == v
-		if w == 0 and is_main == (v ~= 0) then
-			return j-1, z
+		v, x = unpack(i, s, x)
+		local o, b = v & 63, v>>23 & 511
+		if o == 6 then -- GETTABUP
+			d[#d+1] = {false, b, v>>14 & 511, j}
+		elseif o == 8 then -- SETTABUP
+			d[#d+1] = {true, v>>6 & 255, b, j}
 		end
 	end
-	return nil, z
+
+	return d, x
 end
 
 local function parse_constants(s, x)
@@ -48,22 +51,18 @@ local function parse_constants(s, x)
 	return k, x
 end
 
-local function parse_code(s, x, i)
-	local d, v = {}
+local function parse_upvalues(s, x, is_main)
+	local v, w, z
 	v, x = unpack("i", s, x)
-
+	z = x + 2*v
 	for j=1,v do
-		v, x = unpack(i, s, x)
-		--print(string.format("%2d %3d %3d %3d", v & 63, v>>6 & 255, v>>23 & 511, v>>14 & 511))
-		local o, b = v & 63, v>>23 & 511
-		if o == 6 then -- GETTABUP
-			d[#d+1] = {false, b, v>>14 & 511, j}
-		elseif o == 8 then -- SETTABUP
-			d[#d+1] = {true, v>>6 & 255, b, j}
+		v, w, x = unpack("BB", s, x)
+		-- (main && v) || (!main && !v) -> main == v
+		if w == 0 and is_main == (v ~= 0) then
+			return j-1, z
 		end
 	end
-
-	return d, x
+	return nil, z
 end
 
 local function parse_debug(s, x)
