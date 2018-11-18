@@ -113,7 +113,7 @@ end
 -- This section is totally zeroed out for stripped dumps.
 -- Line numbers are useful to report if available.
 local function parse_debug (s, x)
-	local lineinfo, locvars, upvalues, v = {}, nil, {}
+	local lineinfo, v = {}
 
 	v, x = unpack("i", s, x)
 	for j=1,v do
@@ -121,19 +121,17 @@ local function parse_debug (s, x)
 	end
 
 	v, x = unpack("i", s, x)
-	for j=1,v do
-		local varname, startpc, endpc
-		varname, x = parse_string(s, x)
-		startpc, endpc, x = unpack("ii", s, x)
-		--locvars[j] = {varname, startpc, endpc}
+	for _=1,v do
+		_, x = parse_string(s, x)
+		_, _, x = unpack("ii", s, x)
 	end
 
 	v, x = unpack("i", s, x)
-	for j=1,v do
-		upvalues[j], x = parse_string(s, x)
+	for _=1,v do
+		_, x = parse_string(s, x)
 	end
 
-	return lineinfo, locvars, upvalues, x
+	return lineinfo, x
 end
 
 -- ldump.c:166:DumpFunction.
@@ -158,19 +156,20 @@ local function parse_function (cb, s, x, ins_fmt, env_index, parent)
 
 	local nprotos
 	nprotos, x = unpack("i", s, x)
-	for j=1,nprotos do
+	for _=1,nprotos do
 		x = parse_function(cb, s, x, ins_fmt, env_index, source)
 	end
 
-	local debug_lineinfo, debug_locvars, debug_upvalues
-	debug_lineinfo, debug_locvars, debug_upvalues, x = parse_debug(s, x)
+	local lineinfo
+	lineinfo, x = parse_debug(s, x)
 
 	if env_index then
 		for j=1,#candidates do
 			local a = candidates[j]
 			if a[1] == env_index then
-				local line = debug_lineinfo[a[2]]
+				local line = lineinfo[a[2]]
 				if line then
+					-- leave it
 				elseif linedefined == 0 then
 					line = "main"
 				else
