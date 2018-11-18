@@ -1,0 +1,146 @@
+=head1 bcstrict
+
+Runtime static global checker for Lua 5.3.
+
+This sounds a bit like a oxymoron, but to be specific:
+
+=over 2
+
+=item * bcstrict checks for accesses to unexpected globals within a chunk
+I<without executing it>, by inspecting its bytecode.
+
+=item * bcstrict is intended to be executed by running Lua code on itself, at
+startup time, without explicit user(/author) intervention.
+
+=back
+
+If called early, this looks I<kind of> like perl's C<use strict 'vars'>. More
+so than strict.lua, in any case.
+
+=head2 Usage
+
+	-- check this file
+	require "bcstrict"()
+
+	-- allow access via _G and nothing else
+	require "bcstrict"{_G=1}
+
+	-- no direct global access at all
+	require "bcstrict"{}
+	local _G = _ENV
+	--[[ .. do things ... ]]
+
+	-- opportunistic checking
+	do
+		local ok, strict = pcall(require, "bcstrict")
+		if ok then strict() end
+	end
+
+	-- check some other chunk
+	local bcstrict = require "bcstrict"
+	local chunk = assert(loadfile "other.lua")
+	bcstrict(_ENV, chunk)
+
+	-- prevent usage anywhere else
+	package.loaded.bcstrict = function () end
+
+=head2 Compatibility
+
+The techniques used by bcstrict are generally applicable and should not be hard
+to port to 5.4. Earlier versions would require a replacement for C<table.pack>
+and the bytecode-relevant platform details (endianness, integer sizes, &c.) it
+encodes. I've written something similar for LuaJIT before, though.
+
+As far as I know, the representation of precompiled chunks is guaranteed not to
+change within a Lua version (x.y, e.g. 5.3) and always breaks between versions.
+As such, the inclusion of magic opcode and format string constants I<shouldn't>
+lead to incompatibilities in the no forseeable future releases of 5.3.
+
+In any case, almost all Lua 5.y code I<compiles> under 5.3 (though semantics
+might differ), and 5.4 is not expected to add syntax-level incompatibilities,
+so bcstrict will still be fully usable as a static analyzer ... which almost
+totally misses the point, though.
+
+=head2 Limitations
+
+B<You must call the function returned by C<require "bcstrict">!> Since require
+avoids loading a module more than once, but there may be multiple files which
+need to be checked, each user of bcstrict has to actually run it.
+
+Due to the design constraint of being implemented by parsing dumped bytecode,
+bcstrict has a slightly interesting concept of a global access: a get or set to
+a field of an upvalue which is, or can be traced up to, the first (and only!)
+upvalue of a chunk is forbidden if they key used does not exist the environment
+provided (or _ENV) when bcstrict is called.
+
+However, it doesn't track any other variables. In particular, it I<won't> catch
+"globals" that access a declared local _ENV, and it I<will> complain when you
+use fields of _ENV explicitly, e.g.:
+
+	-- OK
+	require "bcstrict"()
+	local _ENV = _ENV
+	print(not_defined)
+
+	-- not OK
+	require "bcstrict"()
+	print(ENV.not_defined)
+
+In addition, bcstrict does nothing useful when called on functions which are
+not chunks. This is because it is fundamentally impossible to figure out which,
+if any, of a function's upvalues contains _ENV. For example, all of the inner
+functions returned by the following snippets have identical code, but close
+over different variables.
+
+	local a
+	function f(b)
+		return function ()
+			a.c = d + b.e
+		end
+	end
+
+	local a
+	function g(b)
+		return function ()
+			c = a.d + b.e
+		end
+	end
+
+	local a, b
+	function h(_ENV)
+		return function ()
+			a.c = b.d + e
+		end
+	end
+
+Debug information I<could> be used to identify _ENV, if available; however, as
+the last example shows, it will also flag a locally redefined _ENV. Whether or
+not this is I<desirable> is arguable: redefinitions of _ENV usually come with
+specific intentionality which makes general global checking pointless anyway.
+
+=head2 why this
+
+Lua's default behaviour of silently accepting access to undefined (misspelled,
+out-of-scope, &c.) variables is hilariously error-prone and literally my #1
+source of bugs while writing this damn module. There are three or so well-known
+ways of combatting this issue:
+
+=over 2
+
+=item * Careful testing. Look, if it works for you...
+
+=item * L<Set a metatable on the global environment
+table.|http://lua-users.org/lists/lua-l/2005-08/msg00737.html> Often good
+enough. Has overhead and side-effects which may make it unsuitable for
+libraries. Won't catch errors on code paths you didn't test with it on.
+
+=item * Some sort of static analyzer. Probably
+L<luacheck|https://github.com/mpeterv/luacheck>. This works pretty well ... if
+you run it.
+
+=back
+
+I like static analysis. Like diet and exercise, I don't do it nearly enough of
+it due to a confluence of minor nuisances.
+
+This is an attempt to capture most of its benefits with a lot less overhead.
