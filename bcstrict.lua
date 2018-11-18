@@ -165,18 +165,20 @@ local function parse_function (cb, s, x, ins_fmt, env_index, parent)
 	local debug_lineinfo, debug_locvars, debug_upvalues
 	debug_lineinfo, debug_locvars, debug_upvalues, x = parse_debug(s, x)
 
-	for j=1,#candidates do
-		local a = candidates[j]
-		if a[1] == env_index or debug_upvalues[a[1]+1] == "_ENV" then
-			local line = debug_lineinfo[a[2]]
-			if line then
-			elseif linedefined == 0 then
-				line = "main"
-			else
-				line = linedefined .. "-" .. lastlinedefined
+	if env_index then
+		for j=1,#candidates do
+			local a = candidates[j]
+			if a[1] == env_index then
+				local line = debug_lineinfo[a[2]]
+				if line then
+				elseif linedefined == 0 then
+					line = "main"
+				else
+					line = linedefined .. "-" .. lastlinedefined
+				end
+				local name = constants[a[4]-255] or "(not constant)"
+				cb(name, a[3], source or "=stripped", line)
 			end
-			local name = constants[a[4]-255] or "(not constant)"
-			cb(name, a[3], source or "=stripped", line)
 		end
 	end
 
