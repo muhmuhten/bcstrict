@@ -168,12 +168,12 @@ local function parse_function (cb, s, x, ins_fmt, env_index, parent)
 			local a = candidates[j]
 			if a[1] == env_index then
 				local line = lineinfo[a[2]]
-				if not line then
-					if linedefined == 0 then
-						line = "main"
-					else
-						line = linedefined .. "-" .. lastlinedefined
-					end
+				if line then
+					-- leave it
+				elseif linedefined == 0 then
+					line = "main"
+				else
+					line = linedefined .. "-" .. lastlinedefined
 				end
 				local name = constants[a[4]-255] or "(not constant)"
 				cb(name, a[3], source or "=stripped", line)
