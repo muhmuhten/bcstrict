@@ -54,7 +54,7 @@ encodes. I've written something similar for LuaJIT before, though.
 As far as I know, the representation of precompiled chunks is guaranteed not to
 change within a Lua version (x.y, e.g. 5.3) and always breaks between versions.
 As such, the inclusion of magic opcode and format string constants I<shouldn't>
-lead to incompatibilities in the no forseeable future releases of 5.3.
+lead to incompatibilities in the no foreseeable future releases of 5.3.
 
 In any case, almost all Lua 5.y code I<compiles> under 5.3 (though semantics
 might differ), and 5.4 is not expected to add syntax-level incompatibilities,
@@ -84,7 +84,7 @@ use fields of _ENV explicitly, e.g.:
 
 	-- not OK
 	require "bcstrict"()
-	print(ENV.not_defined)
+	print(_ENV.not_defined)
 
 In addition, bcstrict does nothing useful when called on functions which are
 not chunks. This is because it is fundamentally impossible to figure out which,
@@ -120,7 +120,7 @@ specific intentionality which makes general global checking pointless anyway.
 
 =head2 why this
 
-Lua's default behaviour of silently accepting access to undefined (misspelled,
+Lua's default behavior of silently accepting access to undefined (misspelled,
 out-of-scope, &c.) variables is hilariously error-prone and literally my #1
 source of bugs while writing this damn module. There are three or so well-known
 ways of combatting this issue:
