@@ -90,6 +90,17 @@ local function parse_constants (s, x)
 end
 
 -- ldump.c:137:DumpUpvalues.
+-- (int)sizeupvalues, {(char)instack, (char)idx}[sizeupvalues].
+-- Every upvalue corresponds to either either (instack==1) a local variable or
+-- (instack==0) an upvalue of the enclosing function. For the main function of
+-- a chunk, _ENV is set to (1,0): the first local of the fictional enclosing
+-- scope. _ENV is *never* on the stack in any other case, since the since all
+-- function definitions lie under the chunk main.
+-- Then, given the (instack, idx) tuple which identifies _ENV in the upvalues
+-- of this function, we can find its upvalue index, s.t. (0, upvalue index)
+-- identifies _ENV in the upvalues of this function's immediate children.
+-- Not every function must have _ENV as an upvalue, but it must be present to
+-- be passed down to descendants.
 local function parse_upvalues (s, x, env_index)
 	local v, z
 	v, x = unpack("i", s, x)
@@ -98,6 +109,8 @@ local function parse_upvalues (s, x, env_index)
 		return nil, z
 	end
 	for j=1,v do
+		-- Read (instack, idx) as (instack<<8)+idx.
+		-- We're looking for either (1,0)=256 or some (0,idx)=idx.
 		v, x = unpack(">i2", s, x)
 		if v == env_index then
 			return j-1, z
