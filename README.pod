@@ -1,6 +1,6 @@
 =head1 bcstrict
 
-Runtime static global checker for Lua 5.3.
+Runtime static global checker for Lua 5.4.
 
 This sounds a bit like a oxymoron, but to be specific:
 
@@ -15,7 +15,7 @@ startup time, without explicit user(/author) intervention.
 =back
 
 If called early, this looks I<kind of> like perl's C<use strict 'vars'>. More
-so than strict.lua, in any case.
+so than strict.lua, in any case. If you squint.
 
 =head2 Usage
 
@@ -46,20 +46,25 @@ so than strict.lua, in any case.
 
 =head2 Compatibility
 
-The techniques used by bcstrict are generally applicable and should not be hard
-to port to 5.4. Earlier versions would require a replacement for C<table.pack>
-and the bytecode-relevant platform details (endianness, integer sizes, &c.) it
-encodes. I've written something similar for LuaJIT before, though.
+The technique used by bcstrict is generally applicable; it was not hard to port
+from 5.3 to 5.4, and I don't expect it to be tremendously difficult to port to
+future versions of Lua, though it does hard-code some bytecode and dump format
+guts. Earlier versions would additionally require a replacement C<table.pack>,
+which is used to infer bytecode-relevant platform details (endianness, integer
+encodes wihch would otherwise also have to be hard-coded.
 
 As far as I know, the representation of precompiled chunks is guaranteed not to
-change within a Lua version (x.y, e.g. 5.3) and always breaks between versions.
-As such, the inclusion of magic opcode and format string constants I<shouldn't>
-lead to incompatibilities in the no foreseeable future releases of 5.3.
+change within a Lua version (x.y, e.g. 5.4) and always breaks between versions.
+This version of bcstrict is written and tested with Lua 5.4.3, so it I<should>
+be compatible with all 5.4.z releases.
 
-In any case, almost all Lua 5.y code I<compiles> under 5.3 (though semantics
-might differ), and 5.4 is not expected to add syntax-level incompatibilities,
-so bcstrict will still be fully usable as a static analyzer ... which almost
-totally misses the point, though.
+No effort goes into making this run on any Lua version other than the one whose
+bytecode it parses, but Lua 5.4 is I<syntactically> backward-compatible enough
+with almost all 5.y code to at least I<compile> it well enough to run bcstrict
+as a static analyzer.
+
+There is also an older version of this code which targets 5.3, which can be
+found in the branches.
 
 =head2 Limitations
 
@@ -73,9 +78,9 @@ a field of an upvalue which is, or can be traced up to, the first (and only!)
 upvalue of a chunk is forbidden if they key used does not exist the environment
 provided (or _ENV) when bcstrict is called.
 
-However, it doesn't track any other variables. In particular, it I<won't> catch
-"globals" that access a declared local _ENV, and it I<will> complain when you
-use fields of _ENV explicitly, e.g.:
+It doesn't track any other variables. In particular, it I<won't> catch
+"globals" that access a declared local _ENV, and it I<will> complain even when
+you access fields of _ENV explicitly, e.g.:
 
 	-- OK
 	require "bcstrict"()
@@ -84,13 +89,13 @@ use fields of _ENV explicitly, e.g.:
 
 	-- not OK
 	require "bcstrict"()
-	print(_ENV.not_defined)
+	print(_ENV["not_defined"])
 
-In addition, bcstrict does nothing useful when called on functions which are
-not chunks. This is because it is fundamentally impossible to figure out which,
-if any, of a function's upvalues contains _ENV. For example, all of the inner
-functions returned by the following snippets have identical code, but close
-over different variables.
+In addition, bcstrict does nothing useful when called on non-chunk functions.
+Because global access compiles as an upvalue table access, it is fundamentally
+impossible to figure out which, if any, of a non-chunk function's upvalues is
+the top-level _ENV. For example, the inner functions returned by the following
+snippets compile to identical bytecode, but close over different variables.
 
 	local a
 	function f(b)
@@ -114,9 +119,7 @@ over different variables.
 	end
 
 Debug information I<could> be used to identify _ENV, if available; however, as
-the last example shows, it will also flag a locally redefined _ENV. Whether or
-not this is I<desirable> is arguable: redefinitions of _ENV usually come with
-specific intentionality which makes general global checking pointless anyway.
+the last example shows, it will also flag intentionally redefined local _ENV.
 
 =head2 why this
 
@@ -131,16 +134,17 @@ ways of combatting this issue:
 
 =item * L<Set a metatable on the global environment
 table.|http://lua-users.org/lists/lua-l/2005-08/msg00737.html> Often good
-enough. Has overhead and side-effects which may make it unsuitable for
-libraries. Won't catch errors on code paths you didn't test with it on.
+enough, but has side-effects which may make it unsuitable for libraries. More
+critically, however, this approach won't catch errors that only occur on code
+paths that I<didn't> occur during testing.
 
 =item * Some sort of static analyzer. Probably
-L<luacheck|https://github.com/mpeterv/luacheck>. This works pretty well ... if
-you run it.
+L<luacheck|https://github.com/mpeterv/luacheck>. This works pretty well ... but
+you have to run it as a separate step.
 
 =back
 
-I like static analysis. Like diet and exercise, I don't do it nearly enough of
-it due to a confluence of minor nuisances.
+This is an attempt to capture the benefits of static analysis (at least in the
+scope of preventing undeclared variable accesses) with minimal user overhead.
 
-This is an attempt to capture most of its benefits with a lot less overhead.
+=cut
